@@ -15,11 +15,15 @@ from typing import List
 from sentence_transformers import SentenceTransformer
 import logging
 import json
+import os
 
 app = FastAPI()
 
+milvus_host = os.getenv("MILVUS_HOST")
+milvus_port = os.getenv("MILVUS_PORT")
+
 # Milvus 클라이언트 설정
-connections.connect("default", host="localhost", port="19530")
+connections.connect("default", host=milvus_host, port=milvus_port)
 collection_name = "bug_reports"
 
 # 컬렉션이 이미 존재하는지 확인하고 존재하지 않으면 생성

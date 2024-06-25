@@ -1,0 +1,56 @@
+version: '3.7'
+
+services:
+  milvus:
+    image: milvusdb/milvus:v2.4.5
+    container_name: milvus-standalone
+    environment:
+      - ETCD_USE_EMBED=true
+      - ETCD_DATA_DIR=/var/lib/milvus/etcd
+      - ETCD_CONFIG_PATH=/milvus/configs/embedEtcd.yaml
+      - COMMON_STORAGETYPE=local
+    volumes:
+      - ./volumes/milvus:/var/lib/milvus
+      - ./embedEtcd.yaml:/milvus/configs/embedEtcd.yaml
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+      - "2379:2379"
+    command: ["milvus", "run", "standalone"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9091/healthz || exit 1"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 90s
+
+  fastapi:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.fastapi
+    container_name: fastapi_container
+    ports:
+      - "8000:8000"
+    depends_on:
+      milvus:
+        condition: service_healthy
+    environment:
+      - MILVUS_HOST=${MILVUS_HOST}
+      - MILVUS_PORT=${MILVUS_PORT}
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.streamlit
+    container_name: streamlit_container
+    ports:
+      - "8502:8502"
+    environment:
+      - STREAMLIT_SERVER_PORT=8502
+      - FASTAPI_HOST=${FASTAPI_HOST}
+      - FASTAPI_PORT=${FASTAPI_PORT}
+    depends_on:
+      - fastapi
+
+volumes:
+  milvus_data:

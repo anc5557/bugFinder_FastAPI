@@ -26,7 +26,7 @@ auto-compaction-retention: '1000'
 EOF
 
     sudo docker run -d \
-        --name milvus-standalone \
+        --name milvus-standalone-local \
         --security-opt seccomp:unconfined \
         -e ETCD_USE_EMBED=true \
         -e ETCD_DATA_DIR=/var/lib/milvus/etcd \
@@ -42,7 +42,7 @@ EOF
         --health-start-period=90s \
         --health-timeout=20s \
         --health-retries=3 \
-        milvusdb/milvus:v2.4.1 \
+        milvusdb/milvus:v2.4.5 \
         milvus run standalone  1> /dev/null
 }
 

@@ -1,6 +1,11 @@
 import streamlit as st
 import requests
 import json
+import os
+
+# 호스트, port
+fastapi_host = os.getenv("FASTAPI_HOST")
+fastapi_port = os.getenv("FASTAPI_PORT")
 
 # Streamlit 애플리케이션 제목 및 설명
 st.title("버그 파인더")
@@ -26,7 +31,8 @@ with tab1:
     if st.button("검색"):
         if query_text:
             response = requests.post(
-                "http://localhost:8000/search_bug/", json={"query_text": query_text}
+                f"http://{fastapi_host}:{fastapi_port}/search_bug/",
+                json={"query_text": query_text},
             )
 
             if response.status_code == 200:
@@ -68,7 +74,7 @@ with tab2:
                     "날짜": str(날짜),
                 }
                 response = requests.post(
-                    "http://localhost:8000/add_bug/", json=report_data
+                    f"http://{fastapi_host}:{fastapi_port}/add_bug/", json=report_data
                 )
                 if response.status_code == 200:
                     st.success("버그 리포트가 성공적으로 추가되었습니다.")
@@ -95,7 +101,7 @@ with tab3:
                 st.error("JSON 데이터는 리포트 목록이어야 합니다.")
             else:
                 response = requests.post(
-                    "http://localhost:8000/add_bug_reports_from_json/",
+                    f"http://{fastapi_host}:{fastapi_port}/add_bug_reports_from_json/",
                     json=reports,
                 )
                 if response.status_code == 200:
@@ -112,14 +118,16 @@ with tab3:
 
 with tab4:
     # 버그 리포트 목록
-    response = requests.get(f"http://localhost:8000/bug_reports")
+    response = requests.get(f"http://{fastapi_host}:{fastapi_port}/bug_reports")
 
     if response.status_code == 200:
         data = response.json()
         bug_reports = data["bug_reports"]
 
         if st.button("모든 버그 리포트 삭제"):
-            delete_all_response = requests.delete("http://localhost:8000/delete_all/")
+            delete_all_response = requests.delete(
+                f"http://{fastapi_host}:{fastapi_port}/delete_all/"
+            )
             if delete_all_response.status_code == 200:
                 st.success("모든 버그 리포트가 성공적으로 삭제되었습니다.")
             else:
@@ -143,7 +151,7 @@ with tab4:
 
                 if st.button("삭제", key=f"delete_{report['id']}"):
                     delete_response = requests.delete(
-                        f"http://localhost:8000/delete_bug/{report['id']}"
+                        f"http://{fastapi_host}:{fastapi_port}/delete_bug/{report['id']}"
                     )
                     if delete_response.status_code == 200:
                         st.success("버그 리포트가 성공적으로 삭제되었습니다.")

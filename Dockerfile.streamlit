@@ -1,0 +1,21 @@
+# Miniconda 설치
+FROM continuumio/miniconda3
+
+# 작업 디렉토리 설정
+WORKDIR /app
+
+# conda 환경과 의존성 설치
+COPY environment.yml .
+RUN conda env create -f environment.yml
+
+# 환경 변수 설정
+ENV PATH /opt/conda/envs/bugFinder_FastAPI/bin:$PATH
+
+# Streamlit 애플리케이션 코드 복사
+COPY streamlit_app.py .
+
+# Streamlit이 실행되는 포트 노출
+EXPOSE 8502
+
+# Streamlit 애플리케이션 실행 명령어
+CMD ["streamlit", "run", "streamlit_app.py", "--server.port=8502", "--server.address=0.0.0.0"]
