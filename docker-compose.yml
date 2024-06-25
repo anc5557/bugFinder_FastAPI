@@ -44,9 +44,9 @@ services:
       dockerfile: ./Dockerfile.streamlit
     container_name: streamlit_container
     ports:
-      - "8502:8502"
+      - "8501:8501"
     environment:
-      - STREAMLIT_SERVER_PORT=8502
+      - STREAMLIT_SERVER_PORT=8501
       - FASTAPI_HOST=${FASTAPI_HOST}
       - FASTAPI_PORT=${FASTAPI_PORT}
     depends_on:
