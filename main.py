@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, HTTPException
 from fastapi.encoders import jsonable_encoder
 from jsonschema import ValidationError
 import numpy as np
@@ -26,20 +26,39 @@ milvus_port = os.getenv("MILVUS_PORT")
 connections.connect("default", host=milvus_host, port=milvus_port)
 collection_name = "bug_reports"
 
-# 컬렉션이 이미 존재하는지 확인하고 존재하지 않으면 생성
-if not utility.has_collection(collection_name):
-    # 컬렉션 스키마 설정
-    fields = [
-        FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
-        FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=768),
-        FieldSchema(name="metadata", dtype=DataType.VARCHAR, max_length=2048),
-    ]
-    schema = CollectionSchema(fields, "Bug reports collection")
 
-    # 새로운 컬렉션 생성
-    collection = Collection(collection_name, schema)
-else:
-    collection = Collection(collection_name)
+def get_or_create_collection():
+    """
+    컬렉션을 가져오거나 생성하는 함수입니다.
+
+    Returns:
+        Collection: 컬렉션 객체
+    """
+    if not utility.has_collection(collection_name):
+        fields = [
+            FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
+            FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=768),
+            FieldSchema(name="metadata", dtype=DataType.VARCHAR, max_length=2048),
+        ]
+        schema = CollectionSchema(fields, "Bug reports collection")
+        collection = Collection(collection_name, schema)  # 컬렉션 생성
+    else:
+        collection = Collection(collection_name)  # 컬렉션 로드
+
+    # 인덱스 생성
+    if not collection.has_index():
+        logging.info("Creating index for collection")
+        collection.create_index(
+            "embedding",
+            index_params={
+                "index_type": "IVF_FLAT",
+                "metric_type": "COSINE",
+                "params": {"nlist": 128},
+            },
+        )
+        logging.info("Index created successfully.")
+    return collection
+
 
 # Sentence Transformer 모델 로드
 model_name = "jhgan/ko-sroberta-multitask"
@@ -52,17 +71,15 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 def startup_event():
+    """
+    애플리케이션이 시작될 때 호출되는 함수입니다.
+    전역 변수인 collection을 초기화하고 컬렉션을 로드합니다.
+    시작 중에 오류가 발생하면 오류 메시지를 기록합니다.
+    """
     try:
-        if collection.is_empty:
-            logger.info("Creating index for collection")
-            collection.create_index(
-                "embedding",
-                index_params={
-                    "index_type": "IVF_FLAT",
-                    "metric_type": "L2",
-                    "params": {"nlist": 128},
-                },
-            )
+        global collection
+        collection = get_or_create_collection()
+        logger.info("Loading collection at startup")
         collection.load()
     except Exception as e:
         logger.error(f"Error during startup: {e}")
@@ -81,6 +98,15 @@ class SearchQuery(BaseModel):
 
 
 def convert_numpy_float_to_python_float(data):
+    """
+    numpy float를 파이썬 float로 변환하는 함수입니다.
+
+    parameter:
+    - data: 변환할 데이터
+
+    return:
+    - 변환된 데이터
+    """
     if isinstance(data, dict):
         for key, value in data.items():
             data[key] = convert_numpy_float_to_python_float(value)
@@ -93,6 +119,15 @@ def convert_numpy_float_to_python_float(data):
 
 @app.post("/add_bug/")
 def add_bug(report: BugReport):
+    """
+    버그 리포트를 Milvus에 추가합니다.
+
+    Parameters:
+    - report: BugReport 모델 객체
+
+    Returns:
+    - message: 성공 메시지, 실패 시 오류 메시지
+    """
     try:
         # 메타데이터를 JSON 형태로 변환
         metadata = {
@@ -116,10 +151,19 @@ def add_bug(report: BugReport):
 
 @app.post("/search_bug/")
 def search_bug(query: SearchQuery):
+    """
+    Milvus에서 버그 리포트를 검색합니다.
+
+    Parameters:
+    - query: SearchQuery 모델 객체 : 검색할 텍스트
+
+    Returns:
+    - response: 검색 결과 리스트 (id, distance, entity에는 metadata{작성자, 고객사, 업무, 버그_내용, 날짜} )
+    """
     try:
         embedding = sentence_transformer_ef.encode([query.query_text])[0].tolist()
         search_params = {
-            "metric_type": "L2",
+            "metric_type": "COSINE",
             "params": {"nprobe": 10},
         }
         results = collection.search(
@@ -154,6 +198,12 @@ def search_bug(query: SearchQuery):
 
 @app.get("/bug_reports/")
 def bug_reports():
+    """
+    모든 버그 리포트를 반환합니다.
+
+    Returns:
+    - response: 버그 리포트 리스트 (작성자, 고객사, 업무, 버그_내용, 날짜)
+    """
     try:
         bug_report_data = collection.query(
             expr="id > 0", output_fields=["id", "metadata"]
@@ -182,6 +232,15 @@ def bug_reports():
 
 @app.delete("/delete_bug/{report_id}")
 def delete_bug(report_id: int):
+    """
+    특정 ID의 버그 리포트를 삭제합니다.
+
+    Parameters:
+    - report_id: 삭제할 리포트 ID
+
+    Returns:
+    - message: 성공 메시지, 실패 시 오류 메시지
+    """
     try:
         result = collection.query(expr=f"id == {report_id}", output_fields=["id"])
         if not result:
@@ -197,6 +256,15 @@ def delete_bug(report_id: int):
 
 @app.post("/add_bug_reports_from_json/")
 async def add_bug_reports(reports: List[BugReport]):
+    """
+    JSON 파일에서 여러 버그 리포트를 Milvus에 추가합니다.
+
+    Parameters:
+    - reports: BugReport 모델 리스트
+
+    Returns:
+    - message: 성공 메시지, 실패 시 오류 메시지
+    """
     try:
 
         # 유효한 리포트를 Milvus에 추가
@@ -226,19 +294,53 @@ async def add_bug_reports(reports: List[BugReport]):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# 전체 컬렉션 삭제
+# 컬렉션 전체 삭제
 @app.delete("/delete_all/")
 def delete_all():
+    """
+    컬렉션 전체를 삭제합니다.
+
+    Returns:
+    - message: 성공 메시지, 실패 시 오류 메시지
+    """
     try:
-        collection.drop()
+        collection.delete(expr="id >= 0")
+        collection.flush()
+        collection.load()
         return {"message": "Collection deleted successfully"}
     except Exception as e:
         logger.error(f"Error deleting collection: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# 컬렉션 drop
+@app.delete("/drop_collection/")
+def drop_collection():
+    """
+    컬렉션을 삭제합니다.
+
+    Returns:
+    - message: 성공 메시지, 실패 시 오류 메시지
+    """
+    try:
+        collection.drop()
+        return {"message": "Collection dropped successfully"}
+    except Exception as e:
+        logger.error(f"Error dropping collection: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/get_bug/{report_id}")
 def get_bug(report_id: int):
+    """
+    특정 ID의 버그 리포트를 조회합니다.
+
+    Parameters:
+    - report_id: 조회할 리포트 ID
+
+    Returns:
+    - data: 조회된 버그 리포트 데이터
+    """
     try:
         # 특정 id에 해당하는 문서 데이터를 조회
         result = collection.query(expr=f"id == {report_id}", output_fields=["*"])

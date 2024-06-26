@@ -39,13 +39,14 @@ with tab1:
                 results = response.json()
                 st.write("가장 비슷한 버그 레포트 3개입니다.")
                 for id, result in enumerate(results, 1):
+                    tasks = ", ".join(result.get("업무", []))
                     st.write(f"{id}:")
                     st.write(f"작성자: {result['작성자']}")
                     st.write(f"고객사: {result['고객사']}")
                     st.write(f"날짜: {result['날짜']}")
-                    st.write(f"업무: {result['업무']}")
+                    st.write(f"업무: {tasks}")
                     st.write(f"버그 내용: {result['버그_내용']}")
-                    # st.write(f"거리: {result['거리']}")
+                    st.write(f"거리: {result['거리']}")
                     st.write("---")
             else:
                 st.write("검색 중 오류가 발생했습니다.")
@@ -124,38 +125,41 @@ with tab4:
         data = response.json()
         bug_reports = data["bug_reports"]
 
-        if st.button("모든 버그 리포트 삭제"):
-            delete_all_response = requests.delete(
-                f"http://{fastapi_host}:{fastapi_port}/delete_all/"
-            )
-            if delete_all_response.status_code == 200:
-                st.success("모든 버그 리포트가 성공적으로 삭제되었습니다.")
-            else:
-                st.error("버그 리포트 삭제 중 오류가 발생했습니다.")
+        if not bug_reports:
+            st.write("버그 리포트가 없습니다.")
+        else:
+            if st.button("모든 버그 리포트 삭제"):
+                delete_all_response = requests.delete(
+                    f"http://{fastapi_host}:{fastapi_port}/delete_all/"
+                )
+                if delete_all_response.status_code == 200:
+                    st.success("모든 버그 리포트가 성공적으로 삭제되었습니다.")
+                else:
+                    st.error("버그 리포트 삭제 중 오류가 발생했습니다.")
 
-        for report in bug_reports:
-            truncated_bug_content = truncate_text(report.get("버그_내용", ""))
+            for report in bug_reports:
+                truncated_bug_content = truncate_text(report.get("버그_내용", ""))
 
-            tasks = ", ".join(report.get("업무", []))
+                tasks = ", ".join(report.get("업무", []))
 
-            expander_text = (
-                f"{report.get('고객사')} | {tasks} | {truncated_bug_content}"
-            )
-            with st.expander(expander_text):
+                expander_text = (
+                    f"{report.get('고객사')} | {tasks} | {truncated_bug_content}"
+                )
+                with st.expander(expander_text):
 
-                st.write(f"작성자: {report.get('작성자')}")
-                st.write(f"고객사: {report.get('고객사')}")
-                st.write(f"업무: {tasks}")
-                st.write(f"날짜: {report.get('날짜')}")
-                st.write(f"버그 내용: {report.get('버그_내용')}")
+                    st.write(f"작성자: {report.get('작성자')}")
+                    st.write(f"고객사: {report.get('고객사')}")
+                    st.write(f"업무: {tasks}")
+                    st.write(f"날짜: {report.get('날짜')}")
+                    st.write(f"버그 내용: {report.get('버그_내용')}")
 
-                if st.button("삭제", key=f"delete_{report['id']}"):
-                    delete_response = requests.delete(
-                        f"http://{fastapi_host}:{fastapi_port}/delete_bug/{report['id']}"
-                    )
-                    if delete_response.status_code == 200:
-                        st.success("버그 리포트가 성공적으로 삭제되었습니다.")
-                    else:
-                        st.error("버그 리포트 삭제 중 오류가 발생했습니다.")
+                    if st.button("삭제", key=f"delete_{report['id']}"):
+                        delete_response = requests.delete(
+                            f"http://{fastapi_host}:{fastapi_port}/delete_bug/{report['id']}"
+                        )
+                        if delete_response.status_code == 200:
+                            st.success("버그 리포트가 성공적으로 삭제되었습니다.")
+                        else:
+                            st.error("버그 리포트 삭제 중 오류가 발생했습니다.")
     else:
-        st.error("버그 리포트를 불러오는 중 오류가 발생했습니다.")
+        st.write("버그 리포트를 가져오는 중 오류가 발생했습니다.")
